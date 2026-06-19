@@ -1,0 +1,90 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and metadata",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "email": { "type": "string" },
+        "department": { "type": "string", "enum": ["Biz Dev", "Client Serving", "Creative", "Operations", "Strategy & Media"] },
+        "role": { "type": "string", "enum": ["Team Member", "Admin", "Super Admin"] },
+        "points": { "type": "number" },
+        "level": { "type": "number" },
+        "badges": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "firstName", "lastName", "email", "department", "role"]
+    },
+    "Workflow": {
+      "title": "Workflow",
+      "description": "Structured AI workflow",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "department": { "type": "string" },
+        "problem": { "type": "string" },
+        "instructions": { "type": "array", "items": { "type": "string" } },
+        "tools": { "type": "array", "items": { "type": "string" } },
+        "toolAccess": { "type": "string" },
+        "masterPrompt": { "type": "string" },
+        "expectedOutput": { "type": "string" },
+        "isCertified": { "type": "boolean" },
+        "contributors": { "type": "array", "items": { "type": "string" } },
+        "usageCount": { "type": "number" },
+        "agentPrompt": { "type": "string" }
+      },
+      "required": ["title", "department", "problem", "instructions", "masterPrompt"]
+    },
+    "Prompt": {
+      "title": "Prompt",
+      "description": "Shared prompt in the library",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "content": { "type": "string" },
+        "tool": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "votes": { "type": "number" },
+        "voters": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "category", "content", "tool", "authorId"]
+    },
+    "Submission": {
+      "title": "Submission",
+      "description": "User output submission",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "workflowId": { "type": "string" },
+        "workflowTitle": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "outputType": { "type": "string" },
+        "link": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "department": { "type": "string" },
+        "isPrivate": { "type": "boolean" },
+        "pointsAwarded": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "workflowId", "title", "outputType", "department"]
+    }
+  },
+  "firestore": {
+    "users": { "schema": "User", "description": "User profiles" },
+    "workflows": { "schema": "Workflow", "description": "AI workflows" },
+    "prompts": { "schema": "Prompt", "description": "Prompt library" },
+    "submissions": { "schema": "Submission", "description": "User submissions" }
+  }
+}

@@ -1,0 +1,103 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    // Collection: users
+    // Document ID: uid
+    // Fields: uid, firstName, lastName, email, department, role, points, level, badges, createdAt
+    //
+    // Collection: workflows
+    // Document ID: auto-generated
+    // Fields: id, title, department, problem, instructions, tools, toolAccess, masterPrompt, expectedOutput, isCertified, contributors, usageCount, agentPrompt
+    //
+    // Collection: prompts
+    // Document ID: auto-generated
+    // Fields: id, title, category, content, tool, authorId, authorName, votes, voters, createdAt
+    //
+    // Collection: submissions
+    // Document ID: auto-generated
+    // Fields: id, userId, userName, workflowId, workflowTitle, title, description, outputType, link, fileUrl, department, isPrivate, pointsAwarded, status, createdAt
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Admin', 'Super Admin'] || 
+         request.auth.token.email == "asayeh@telfaz11.com");
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'firstName', 'lastName', 'email', 'department', 'role']) &&
+             data.uid is string && data.firstName is string && data.lastName is string &&
+             data.email is string && data.department is string && data.role is string;
+    }
+
+    function isValidWorkflow(data) {
+      return data.keys().hasAll(['title', 'department', 'problem', 'instructions', 'tools', 'toolAccess', 'masterPrompt', 'expectedOutput', 'isCertified', 'contributors', 'usageCount', 'agentPrompt']) &&
+             data.title is string && data.title.size() > 0 &&
+             data.department is string &&
+             data.problem is string &&
+             data.instructions is list &&
+             data.tools is list &&
+             data.toolAccess is string &&
+             data.masterPrompt is string &&
+             data.expectedOutput is string &&
+             data.isCertified is bool &&
+             data.contributors is list &&
+             data.usageCount is number &&
+             data.agentPrompt is string;
+    }
+
+    function isValidPrompt(data) {
+      return data.keys().hasAll(['title', 'category', 'content', 'tool', 'authorId']) &&
+             data.title is string && data.content is string && data.authorId is string;
+    }
+
+    function isValidSubmission(data) {
+      return data.keys().hasAll(['userId', 'workflowId', 'title', 'outputType', 'department']) &&
+             data.userId is string && data.workflowId is string && data.title is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data);
+    }
+
+    match /workflows/{workflowId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidWorkflow(request.resource.data);
+      allow update: if isAdmin() && isValidWorkflow(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /prompts/{promptId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidPrompt(request.resource.data);
+      allow update: if (isAuthenticated() && (request.resource.data.authorId == request.auth.uid || isAdmin())) && isValidPrompt(request.resource.data);
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.authorId == request.auth.uid);
+    }
+
+    match /submissions/{submissionId} {
+      allow read: if isAuthenticated() && (resource.data.isPrivate == false || resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidSubmission(request.resource.data) && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin() && isValidSubmission(request.resource.data);
+      allow delete: if isAdmin();
+    }
+  }
+}
