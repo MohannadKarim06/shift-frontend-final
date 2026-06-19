@@ -6,6 +6,7 @@ import {
   approveSubmission, rejectSubmission,
   fetchAdminStats,
   fetchPendingUsers, approveUser, rejectUser,
+  fetchOrgTokenUsage, fetchUserTokenUsage,
 } from '../services/api';
 import { User, Workflow, Submission, Prompt } from '../types';
 import { 
@@ -23,7 +24,9 @@ import {
   Workflow as WorkflowIcon,
   Award,
   X,
-  Edit2
+  Edit2,
+  Gauge,
+  Zap
 } from 'lucide-react';
 import { seedDatabase } from '../lib/seed';
 import { cn } from '../lib/utils';
@@ -33,6 +36,13 @@ import { useLanguage } from '../contexts/LanguageContext';
 
 interface AdminPanelProps {
   user: User;
+}
+
+interface TokenUsage {
+  tokens_used: number;
+  budget: number;
+  remaining: number;
+  over_budget: boolean;
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ user }) => {
@@ -50,6 +60,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user }) => {
   const [showWorkflowModal, setShowWorkflowModal] = useState(false);
   const [editingWorkflow, setEditingWorkflow] = useState<Workflow | null>(null);
   const { t, isRTL } = useLanguage();
+
+  // ── Token usage state ────────────────────────────────────────────────────
+  const [orgTokens, setOrgTokens] = useState<TokenUsage | null>(null);
+  const [orgTokensLoading, setOrgTokensLoading] = useState(true);
+  const [userTokens, setUserTokens] = useState<Record<string, TokenUsage>>({});
+  const [userTokensLoading, setUserTokensLoading] = useState<Record<string, boolean>>({});
 
   const [workflowForm, setWorkflowForm] = useState<Omit<Workflow, 'id'>>({
     title: '',
@@ -87,6 +103,45 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user }) => {
     };
     loadData();
   }, []);
+
+  // Load org-wide token usage separately so a failure here doesn't block the rest of the panel
+  useEffect(() => {
+    const loadOrgTokens = async () => {
+      try {
+        const data = await fetchOrgTokenUsage();
+        setOrgTokens(data);
+      } catch (error) {
+        console.error('Failed to load org token usage:', error);
+      } finally {
+        setOrgTokensLoading(false);
+      }
+    };
+    loadOrgTokens();
+  }, []);
+
+  const handleRefreshOrgTokens = async () => {
+    setOrgTokensLoading(true);
+    try {
+      const data = await fetchOrgTokenUsage();
+      setOrgTokens(data);
+    } catch (error) {
+      console.error('Failed to refresh org token usage:', error);
+    } finally {
+      setOrgTokensLoading(false);
+    }
+  };
+
+  const handleCheckUserTokens = async (uid: string) => {
+    setUserTokensLoading(prev => ({ ...prev, [uid]: true }));
+    try {
+      const data = await fetchUserTokenUsage(uid);
+      setUserTokens(prev => ({ ...prev, [uid]: data }));
+    } catch (error) {
+      console.error(`Failed to load token usage for ${uid}:`, error);
+    } finally {
+      setUserTokensLoading(prev => ({ ...prev, [uid]: false }));
+    }
+  };
 
   const handleSeed = async () => {
     setSeeding(true);
@@ -133,7 +188,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user }) => {
   const handleApproveUser = async (uid: string) => {
     await approveUser(uid);
     setPendingUsers(prev => prev.filter(u => u.uid !== uid));
-    // Refresh full user list so newly approved user appears
     const updated = await fetchAllUsers();
     setUsers(updated);
   };
@@ -298,6 +352,64 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user }) => {
         </div>
       </div>
 
+      {/* ── Org-wide Token Usage ───────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-zinc-50 flex items-center justify-between">
+          <h3 className="font-bold text-zinc-900 flex items-center gap-2">
+            <Gauge size={20} className="text-red-600" />
+            Org-Wide Token Usage (Today)
+          </h3>
+          <button
+            onClick={handleRefreshOrgTokens}
+            disabled={orgTokensLoading}
+            className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all disabled:opacity-50"
+            title="Refresh"
+          >
+            <RefreshCw size={16} className={cn(orgTokensLoading && 'animate-spin')} />
+          </button>
+        </div>
+        <div className="p-6">
+          {orgTokensLoading ? (
+            <div className="flex items-center gap-2 text-zinc-400 text-sm">
+              <Loader2 size={16} className="animate-spin" />
+              Loading token usage...
+            </div>
+          ) : orgTokens ? (
+            <div className="space-y-3">
+              <div className="flex items-end justify-between">
+                <div>
+                  <p className="text-2xl font-bold text-zinc-900">
+                    {orgTokens.tokens_used.toLocaleString()}
+                    <span className="text-sm font-medium text-zinc-400"> / {orgTokens.budget.toLocaleString()} tokens</span>
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    {orgTokens.remaining.toLocaleString()} remaining today
+                  </p>
+                </div>
+                {orgTokens.over_budget && (
+                  <span className="px-3 py-1 bg-red-50 text-red-600 text-xs font-bold rounded-full border border-red-100">
+                    Over Budget
+                  </span>
+                )}
+              </div>
+              <div className="w-full h-3 bg-zinc-100 rounded-full overflow-hidden">
+                <div
+                  className={cn(
+                    'h-full rounded-full transition-all',
+                    orgTokens.over_budget ? 'bg-red-600' : 'bg-emerald-500'
+                  )}
+                  style={{ width: `${Math.min(100, (orgTokens.tokens_used / orgTokens.budget) * 100)}%` }}
+                />
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-zinc-400 italic">
+              Could not load org token usage. Check that ANTHROPIC_API_KEY and Firestore are configured correctly on the backend.
+            </p>
+          )}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Pending Approvals — shown only when there are pending users */}
         {pendingUsers.length > 0 && (
@@ -381,30 +493,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user }) => {
                     <th className="px-6 py-4">{t('department')}</th>
                     <th className="px-6 py-4">{t('role')}</th>
                     <th className="px-6 py-4">{t('points')}</th>
+                    <th className="px-6 py-4">Tokens (Today)</th>
                     <th className="px-6 py-4">{t('actions')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-50">
-                  {users.map(user => (
-                    <tr key={user.uid} className="hover:bg-zinc-50/50 transition-all">
+                  {users.map(u => (
+                    <tr key={u.uid} className="hover:bg-zinc-50/50 transition-all">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 bg-zinc-100 rounded-lg flex items-center justify-center font-bold text-zinc-600 text-xs">
-                            {user.firstName[0]}{user.lastName[0]}
+                            {u.firstName[0]}{u.lastName[0]}
                           </div>
                           <div>
-                            <p className="text-sm font-bold text-zinc-900">{user.firstName} {user.lastName}</p>
-                            <p className="text-xs text-zinc-500">{user.email}</p>
+                            <p className="text-sm font-bold text-zinc-900">{u.firstName} {u.lastName}</p>
+                            <p className="text-xs text-zinc-500">{u.email}</p>
                           </div>
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="text-xs font-medium text-zinc-600">{t(user.department.toLowerCase().replace(/ & /g, '').replace(/ /g, '')) || user.department}</span>
+                        <span className="text-xs font-medium text-zinc-600">{t(u.department.toLowerCase().replace(/ & /g, '').replace(/ /g, '')) || u.department}</span>
                       </td>
                       <td className="px-6 py-4">
                         <select 
-                          value={user.role}
-                          onChange={(e) => handleUpdateRole(user.uid, e.target.value)}
+                          value={u.role}
+                          onChange={(e) => handleUpdateRole(u.uid, e.target.value)}
                           className="text-xs font-bold bg-zinc-100 border-transparent rounded-lg focus:ring-0 py-1 px-2"
                         >
                           <option value="Team Member">Team Member</option>
@@ -413,11 +526,36 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user }) => {
                         </select>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="text-sm font-bold text-zinc-900">{user.points}</span>
+                        <span className="text-sm font-bold text-zinc-900">{u.points}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {userTokensLoading[u.uid] ? (
+                          <Loader2 size={14} className="animate-spin text-zinc-400" />
+                        ) : userTokens[u.uid] ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className={cn(
+                              "text-xs font-bold",
+                              userTokens[u.uid].over_budget ? "text-red-600" : "text-zinc-700"
+                            )}>
+                              {userTokens[u.uid].tokens_used.toLocaleString()} / {userTokens[u.uid].budget.toLocaleString()}
+                            </span>
+                            {userTokens[u.uid].over_budget && (
+                              <span className="text-[9px] font-bold text-red-600 uppercase bg-red-50 px-1.5 py-0.5 rounded">over</span>
+                            )}
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => handleCheckUserTokens(u.uid)}
+                            className="flex items-center gap-1 text-xs font-bold text-zinc-400 hover:text-red-600 transition-all"
+                          >
+                            <Zap size={12} />
+                            Check
+                          </button>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <button
-                          onClick={() => handleDeleteUser(user.uid, `${user.firstName} ${user.lastName}`)}
+                          onClick={() => handleDeleteUser(u.uid, `${u.firstName} ${u.lastName}`)}
                           className="p-2 text-zinc-400 hover:text-red-600 transition-all"
                           title="Delete user"
                         >
