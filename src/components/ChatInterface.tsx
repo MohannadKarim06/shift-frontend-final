@@ -77,7 +77,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ workflow }) => {
         {
           role: 'model',
           text: isRateLimit
-            ? '⚠️ **Token limit reached.** You've used your daily AI budget. It resets at midnight UTC. Contact your admin if you need more.'
+            ? `⚠️ **Token limit reached.** You've used your daily AI budget. It resets at midnight UTC. Contact your admin if you need more.`
             : `❌ ${detail}`,
         },
       ]);
