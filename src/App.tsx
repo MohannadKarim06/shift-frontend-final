@@ -49,6 +49,31 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Points/level/badges can change server-side (e.g. an admin approving a
+  // submission) without this client knowing. Silently re-fetch the profile
+  // periodically and whenever the tab regains focus, so the UI doesn't show
+  // stale points until the user manually refreshes or re-logs in.
+  useEffect(() => {
+    if (!user) return;
+
+    const refresh = async () => {
+      try {
+        const profile = await fetchMe();
+        setUser(profile);
+      } catch {
+        // Silent — a failed background refresh shouldn't disrupt the UI
+      }
+    };
+
+    const interval = setInterval(refresh, 30000);
+    window.addEventListener('focus', refresh);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [user?.uid]);
+
   if (loading) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-zinc-50">

@@ -11,6 +11,10 @@ import { ChatMessage, Workflow, User, Prompt, Submission } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+// Railway's free tier can be slow to respond (cold-ish requests on shared
+// CPU) — give requests generous headroom before giving up client-side.
+const REQUEST_TIMEOUT_MS = 60000;
+
 // ── Core fetch helper ─────────────────────────────────────────────────────────
 
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -18,22 +22,36 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
   if (!user) throw new Error('Not authenticated');
 
   const token = await user.getIdToken();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-  const res = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-      ...(options.headers || {}),
-    },
-  });
+  try {
+    const res = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        ...(options.headers || {}),
+      },
+      signal: controller.signal,
+    });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
-    throw new Error(err.detail || `API error ${res.status}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(err.detail || `API error ${res.status}`);
+    }
+
+    return res.json();
+  } catch (e: any) {
+    if (e.name === 'AbortError') {
+      throw new Error(
+        'The server is taking longer than usual to respond. Please try again in a moment.'
+      );
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  return res.json();
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -92,6 +110,10 @@ export async function fetchWorkflows(): Promise<Workflow[]> {
   return apiFetch('/workflows/');
 }
 
+export async function fetchWorkflowsByDepartment(department: string): Promise<Workflow[]> {
+  return apiFetch(`/workflows/by-department/${encodeURIComponent(department)}`);
+}
+
 export async function fetchWorkflow(id: string): Promise<Workflow> {
   return apiFetch(`/workflows/${id}`);
 }
@@ -114,6 +136,10 @@ export async function deleteWorkflow(id: string): Promise<void> {
 
 export async function fetchPrompts(): Promise<Prompt[]> {
   return apiFetch('/prompts/');
+}
+
+export async function fetchPromptsByCategory(category: string): Promise<Prompt[]> {
+  return apiFetch(`/prompts/by-category/${encodeURIComponent(category)}`);
 }
 
 export async function createPrompt(data: {
@@ -139,6 +165,13 @@ export async function fetchMySubmissions(): Promise<Submission[]> {
 
 export async function fetchAllSubmissions(): Promise<Submission[]> {
   return apiFetch('/submissions/');
+}
+
+export async function fetchRecentSubmissions(limit = 5, department?: string): Promise<Submission[]> {
+  const path = department
+    ? `/submissions/recent?limit=${limit}&department=${encodeURIComponent(department)}`
+    : `/submissions/recent?limit=${limit}`;
+  return apiFetch(path);
 }
 
 export async function createSubmission(data: {
@@ -195,6 +228,18 @@ export async function fetchMyTokenUsage(): Promise<{
   return apiFetch('/users/me/tokens');
 }
 
+export async function fetchUserTokenUsage(uid: string): Promise<{
+  tokens_used: number; budget: number; remaining: number; over_budget: boolean;
+}> {
+  return apiFetch(`/users/${uid}/tokens`);
+}
+
+export async function fetchOrgTokenUsage(): Promise<{
+  tokens_used: number; budget: number; remaining: number; over_budget: boolean;
+}> {
+  return apiFetch('/admin/tokens/org');
+}
+
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
 export async function fetchAdminStats(): Promise<{
@@ -208,12 +253,6 @@ export async function fetchAdminStats(): Promise<{
 
 type FileFormat = 'pdf' | 'pptx' | 'html';
 
-const MIME_TYPES: Record<FileFormat, string> = {
-  pdf: 'application/pdf',
-  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  html: 'text/html',
-};
-
 export async function generateFile(
   format: FileFormat,
   title: string,
@@ -223,33 +262,44 @@ export async function generateFile(
   const user = auth.currentUser;
   if (!user) throw new Error('Not authenticated');
   const token = await user.getIdToken();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-  const res = await fetch(`${API_URL}/files/generate/${format}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ title, content, workflow_title: workflowTitle || '' }),
-  });
+  try {
+    const res = await fetch(`${API_URL}/files/generate/${format}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ title, content, workflow_title: workflowTitle || '' }),
+      signal: controller.signal,
+    });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: 'File generation failed' }));
-    throw new Error(err.detail || `API error ${res.status}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'File generation failed' }));
+      throw new Error(err.detail || `API error ${res.status}`);
+    }
+
+    const blob = await res.blob();
+    const ext = format === 'pptx' ? 'pptx' : format;
+    const filename =
+      res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] ||
+      `${title.replace(/\s+/g, '_')}.${ext}`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e: any) {
+    if (e.name === 'AbortError') {
+      throw new Error('File generation timed out. Please try again.');
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  // Trigger browser download
-  const blob = await res.blob();
-  const ext = format === 'pptx' ? 'pptx' : format;
-  const filename =
-    res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] ||
-    `${title.replace(/\s+/g, '_')}.${ext}`;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 // ── Pending user approvals ────────────────────────────────────────────────────

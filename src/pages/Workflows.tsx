@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Workflow, Department, User } from '../types';
-import { 
-  Search, 
-  Filter, 
-  CheckCircle2, 
-  Users, 
+import { fetchWorkflows } from '../services/api';
+import {
+  Search,
+  CheckCircle2,
+  Users,
   ArrowRight,
   Sparkles,
   LayoutGrid,
@@ -17,7 +15,6 @@ import {
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
-import { seedDatabase } from '../lib/seed';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface WorkflowsProps {
@@ -46,28 +43,23 @@ export const Workflows: React.FC<WorkflowsProps> = ({ user }) => {
   ];
 
   useEffect(() => {
-    // Seed database if empty
-    seedDatabase();
-
-    const q = query(collection(db, 'workflows'), orderBy('usageCount', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setWorkflows(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Workflow)));
-      setLoading(false);
-    }, (error) => {
-      setLoading(false);
+    const loadWorkflows = async () => {
       try {
-        handleFirestoreError(error, OperationType.GET, 'workflows');
-      } catch (e) {
-        setErrorState(e as Error);
+        const data = await fetchWorkflows(); // backend, already sorted by usageCount desc
+        setWorkflows(data);
+      } catch (error) {
+        setErrorState(error as Error);
+      } finally {
+        setLoading(false);
       }
-    });
-    return () => unsubscribe();
+    };
+    loadWorkflows();
   }, []);
 
   const filteredWorkflows = workflows.filter(w => {
     const title = w.title || '';
     const problem = w.problem || '';
-    const matchesSearch = title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    const matchesSearch = title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          problem.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesDept = selectedDept === 'All' || w.department === selectedDept;
     return matchesSearch && matchesDept;
@@ -77,7 +69,7 @@ export const Workflows: React.FC<WorkflowsProps> = ({ user }) => {
     <div className="space-y-8">
       {/* Featured Banner */}
       {!loading && workflows.length > 0 && (
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="relative overflow-hidden rounded-[2rem] bg-red-600 text-white shadow-2xl shadow-red-200"
@@ -85,14 +77,14 @@ export const Workflows: React.FC<WorkflowsProps> = ({ user }) => {
           <div className="absolute inset-0 bg-gradient-to-br from-red-500 to-red-700 opacity-50" />
           <div className={cn("absolute w-96 h-96 bg-white/10 rounded-full blur-3xl", isRTL ? "-left-20 -top-20" : "-right-20 -top-20")} />
           <div className={cn("absolute w-96 h-96 bg-black/10 rounded-full blur-3xl", isRTL ? "-right-20 -bottom-20" : "-left-20 -bottom-20")} />
-          
+
           <div className="relative grid grid-cols-1 lg:grid-cols-2 gap-8 p-8 lg:p-12 items-center">
             <div className="space-y-6">
               <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-bold uppercase tracking-widest">
                 <Sparkles size={14} className="text-yellow-300" />
                 {t('featuredWorkflow')}
               </div>
-              
+
               <div className="space-y-4">
                 <h2 className="text-4xl lg:text-5xl font-black tracking-tighter leading-none">
                   {workflows[0].title}
@@ -105,8 +97,8 @@ export const Workflows: React.FC<WorkflowsProps> = ({ user }) => {
               <div className="flex flex-wrap items-center gap-6 pt-4">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 overflow-hidden">
-                    <img 
-                      src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workflows[0].contributors[0] || 'default'}`} 
+                    <img
+                      src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${workflows[0].contributors[0] || 'default'}`}
                       alt="Creator"
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
@@ -117,9 +109,9 @@ export const Workflows: React.FC<WorkflowsProps> = ({ user }) => {
                     <p className="font-bold text-white">{workflows[0].contributors[0] || 'AI Studio Team'}</p>
                   </div>
                 </div>
-                
+
                 <div className="h-10 w-px bg-white/20 hidden sm:block" />
-                
+
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30">
                     <Users size={20} />
@@ -132,7 +124,7 @@ export const Workflows: React.FC<WorkflowsProps> = ({ user }) => {
               </div>
 
               <div className="pt-4">
-                <Link 
+                <Link
                   to={`/workflows/${workflows[0].id}`}
                   className="inline-flex items-center gap-2 px-8 py-4 bg-white text-red-600 rounded-2xl font-black uppercase tracking-wider hover:bg-zinc-900 hover:text-white transition-all shadow-xl hover:shadow-black/20 group"
                 >
@@ -144,8 +136,8 @@ export const Workflows: React.FC<WorkflowsProps> = ({ user }) => {
 
             <div className="relative hidden lg:block">
               <div className="aspect-[4/3] rounded-3xl overflow-hidden border-4 border-white/20 shadow-2xl relative group">
-                <img 
-                  src={`https://picsum.photos/seed/${workflows[0].id}/800/600`} 
+                <img
+                  src={`https://picsum.photos/seed/${workflows[0].id}/800/600`}
                   alt={workflows[0].title}
                   className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                   referrerPolicy="no-referrer"
@@ -154,7 +146,6 @@ export const Workflows: React.FC<WorkflowsProps> = ({ user }) => {
                   <p className="text-white font-bold italic">"{workflows[0].title} in action"</p>
                 </div>
               </div>
-              {/* Decorative elements */}
               <div className={cn("absolute w-32 h-32 bg-yellow-400 rounded-3xl -z-10 flex items-center justify-center text-black font-black text-2xl shadow-xl", isRTL ? "-bottom-6 -left-6 rotate-12" : "-bottom-6 -right-6 -rotate-12")}>
                 {t('hot')}
               </div>
@@ -169,13 +160,13 @@ export const Workflows: React.FC<WorkflowsProps> = ({ user }) => {
           <p className="text-zinc-500 mt-1">{t('workflowsSubtitle')}</p>
         </div>
         <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-zinc-200 shadow-sm">
-          <button 
+          <button
             onClick={() => setViewMode('grid')}
             className={cn("p-2 rounded-lg transition-all", viewMode === 'grid' ? "bg-zinc-900 text-white shadow-md" : "text-zinc-400 hover:text-zinc-600")}
           >
             <LayoutGrid size={20} />
           </button>
-          <button 
+          <button
             onClick={() => setViewMode('list')}
             className={cn("p-2 rounded-lg transition-all", viewMode === 'list' ? "bg-zinc-900 text-white shadow-md" : "text-zinc-400 hover:text-zinc-600")}
           >
@@ -188,8 +179,8 @@ export const Workflows: React.FC<WorkflowsProps> = ({ user }) => {
       <div className="flex flex-col md:flex-row gap-4">
         <div className="flex-1 relative">
           <Search className={cn("absolute top-1/2 -translate-y-1/2 text-zinc-400", isRTL ? "right-3" : "left-3")} size={18} />
-          <input 
-            type="text" 
+          <input
+            type="text"
             placeholder={t('searchWorkflowsPlaceholder')}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -206,8 +197,8 @@ export const Workflows: React.FC<WorkflowsProps> = ({ user }) => {
               onClick={() => setSelectedDept(dept.id)}
               className={cn(
                 "px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all border",
-                selectedDept === dept.id 
-                  ? "bg-red-600 text-white border-red-600 shadow-lg shadow-red-100" 
+                selectedDept === dept.id
+                  ? "bg-red-600 text-white border-red-600 shadow-lg shadow-red-100"
                   : "bg-white text-zinc-600 border-zinc-200 hover:border-zinc-300"
               )}
             >
@@ -226,7 +217,7 @@ export const Workflows: React.FC<WorkflowsProps> = ({ user }) => {
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {filteredWorkflows.map((w) => (
-            <motion.div 
+            <motion.div
               layout
               key={w.id}
               className="bg-white rounded-2xl border border-zinc-100 shadow-sm hover:shadow-xl hover:shadow-zinc-200/50 hover:border-red-200 transition-all group overflow-hidden flex flex-col"
@@ -254,7 +245,7 @@ export const Workflows: React.FC<WorkflowsProps> = ({ user }) => {
                   <span className="flex items-center gap-1"><Sparkles size={14} /> {t('aiAgentReady')}</span>
                 </div>
               </div>
-              <Link 
+              <Link
                 to={`/workflows/${w.id}`}
                 className="p-4 bg-zinc-50 border-t border-zinc-100 flex items-center justify-between font-bold text-zinc-900 hover:bg-red-600 hover:text-white transition-all"
               >
@@ -267,7 +258,7 @@ export const Workflows: React.FC<WorkflowsProps> = ({ user }) => {
       ) : (
         <div className="space-y-3">
           {filteredWorkflows.map((w) => (
-            <Link 
+            <Link
               key={w.id}
               to={`/workflows/${w.id}`}
               className="bg-white p-4 rounded-xl border border-zinc-100 flex items-center justify-between group hover:border-red-200 transition-all"

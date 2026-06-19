@@ -1,22 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { fetchWorkflowsByDepartment, fetchPromptsByCategory, fetchRecentSubmissions } from '../services/api';
 import { Workflow, Prompt, Submission, Department, User } from '../types';
-import { 
-  BarChart3, 
-  Users, 
-  Zap, 
-  ArrowRight, 
-  CheckCircle2, 
-  TrendingUp, 
+import {
+  BarChart3,
+  Users,
+  Zap,
+  ArrowRight,
+  CheckCircle2,
+  TrendingUp,
   Award,
   Sparkles,
   LayoutGrid,
-  List,
   Loader2
 } from 'lucide-react';
-import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -27,7 +24,7 @@ interface DepartmentPageProps {
 export const DepartmentPage: React.FC<DepartmentPageProps> = ({ user }) => {
   const { dept } = useParams<{ dept: string }>();
   const decodedDept = decodeURIComponent(dept || '') as Department;
-  
+
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
@@ -43,51 +40,29 @@ export const DepartmentPage: React.FC<DepartmentPageProps> = ({ user }) => {
       return;
     }
 
-    // Fetch workflows
-    const wq = query(collection(db, 'workflows'), where('department', '==', decodedDept), orderBy('usageCount', 'desc'));
-    const unsubscribeWorkflows = onSnapshot(wq, (snapshot) => {
-      setWorkflows(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Workflow)));
-    }, (error) => {
-      setLoading(false);
-      try {
-        handleFirestoreError(error, OperationType.GET, 'workflows');
-      } catch (e) {
-        setErrorState(e as Error);
-      }
-    });
+    const promptCategory =
+      decodedDept === 'Creative' ? 'Creative' :
+      decodedDept === 'Strategy & Media' ? 'Strategy' :
+      'Analysis';
 
-    // Fetch prompts
-    const pq = query(collection(db, 'prompts'), where('category', '==', decodedDept === 'Creative' ? 'Creative' : decodedDept === 'Strategy & Media' ? 'Strategy' : 'Analysis'));
-    const unsubscribePrompts = onSnapshot(pq, (snapshot) => {
-      setPrompts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Prompt)));
-    }, (error) => {
-      setLoading(false);
+    const loadDeptData = async () => {
       try {
-        handleFirestoreError(error, OperationType.GET, 'prompts');
-      } catch (e) {
-        setErrorState(e as Error);
+        const [wfs, prompts, subs] = await Promise.all([
+          fetchWorkflowsByDepartment(decodedDept),
+          fetchPromptsByCategory(promptCategory),
+          fetchRecentSubmissions(5, decodedDept),
+        ]);
+        setWorkflows(wfs);
+        setPrompts(prompts);
+        setSubmissions(subs);
+      } catch (error) {
+        setErrorState(error as Error);
+      } finally {
+        setLoading(false);
       }
-    });
-
-    // Fetch recent submissions
-    const sq = query(collection(db, 'submissions'), where('department', '==', decodedDept), orderBy('createdAt', 'desc'), limit(5));
-    const unsubscribeSubmissions = onSnapshot(sq, (snapshot) => {
-      setSubmissions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Submission)));
-      setLoading(false);
-    }, (error) => {
-      setLoading(false);
-      try {
-        handleFirestoreError(error, OperationType.GET, 'submissions');
-      } catch (e) {
-        setErrorState(e as Error);
-      }
-    });
-
-    return () => {
-      unsubscribeWorkflows();
-      unsubscribePrompts();
-      unsubscribeSubmissions();
     };
+
+    loadDeptData();
   }, [decodedDept]);
 
   const stats = {
@@ -107,166 +82,156 @@ export const DepartmentPage: React.FC<DepartmentPageProps> = ({ user }) => {
         <>
           {/* Header */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h1 className="text-4xl font-bold text-zinc-900 tracking-tight">{t(decodedDept.toLowerCase().replace(/ & /g, '').replace(/ /g, '')) || decodedDept}</h1>
-          <p className="text-zinc-500 mt-1">{t('deptMaturitySubtitle')}</p>
-        </div>
-        <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-zinc-100 shadow-sm">
-          <div className={cn("text-right", isRTL && "text-left")}>
-            <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">{t('aiMaturityScore')}</p>
-            <p className="text-xl font-bold text-red-600">{stats.maturityScore}%</p>
-          </div>
-          <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center text-red-600">
-            <BarChart3 size={24} />
-          </div>
-        </div>
-      </div>
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-2xl border border-zinc-100 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 bg-red-50 rounded-xl flex items-center justify-center text-red-600">
-            <Zap size={24} />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-zinc-500">{t('activeWorkflows')}</p>
-            <p className="text-2xl font-bold text-zinc-900">{stats.totalWorkflows}</p>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-2xl border border-zinc-100 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
-            <TrendingUp size={24} />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-zinc-500">{t('totalExecutions')}</p>
-            <p className="text-2xl font-bold text-zinc-900">{stats.totalUsage}</p>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-2xl border border-zinc-100 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
-            <Users size={24} />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-zinc-500">{t('topContributors')}</p>
-            <p className="text-2xl font-bold text-zinc-900">12</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Workflows Section */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xl font-bold text-zinc-900">{t('topWorkflows')}</h3>
-            <Link to="/workflows" className="text-sm font-semibold text-red-600 hover:underline">{t('viewAll')}</Link>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {workflows.map((w) => (
-              <Link 
-                key={w.id}
-                to={`/workflows/${w.id}`}
-                className="bg-white p-6 rounded-2xl border border-zinc-100 shadow-sm hover:shadow-xl hover:shadow-zinc-200/50 hover:border-red-200 transition-all group flex flex-col"
-              >
-                <div className="flex-1">
-                  <div className="flex items-center justify-between mb-4">
-                    {w.isCertified && <CheckCircle2 size={18} className="text-emerald-500" />}
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{w.usageCount} {t('used')}</span>
-                  </div>
-                  <h4 className="text-lg font-bold text-zinc-900 group-hover:text-red-600 transition-colors mb-2">{w.title}</h4>
-                  <p className="text-xs text-zinc-500 line-clamp-2">{w.problem}</p>
-                </div>
-                <div className="mt-6 flex items-center justify-between text-xs font-bold text-zinc-400 uppercase tracking-widest">
-                  <span className="flex items-center gap-1"><Sparkles size={14} className="text-red-600" /> {t('aiAgentReady')}</span>
-                  <ArrowRight size={16} className={cn("transition-all", isRTL ? "group-hover:-translate-x-1 rotate-180" : "group-hover:translate-x-1")} />
-                </div>
-              </Link>
-            ))}
-            {workflows.length === 0 && (
-              <div className="col-span-2 p-12 text-center bg-white rounded-2xl border border-dashed border-zinc-200">
-                <p className="text-zinc-400 italic">{t('noWorkflowsDept')}</p>
+            <div>
+              <h1 className="text-4xl font-bold text-zinc-900 tracking-tight">{t(decodedDept.toLowerCase().replace(/ & /g, '').replace(/ /g, '')) || decodedDept}</h1>
+              <p className="text-zinc-500 mt-1">{t('deptMaturitySubtitle')}</p>
+            </div>
+            <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-zinc-100 shadow-sm">
+              <div className={cn("text-right", isRTL && "text-left")}>
+                <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">{t('aiMaturityScore')}</p>
+                <p className="text-xl font-bold text-red-600">{stats.maturityScore}%</p>
               </div>
-            )}
+              <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center text-red-600">
+                <BarChart3 size={24} />
+              </div>
+            </div>
           </div>
 
-          {/* Recent Outputs */}
-          <div className="space-y-4 pt-4">
-            <h3 className="text-xl font-bold text-zinc-900">{t('exampleOutputs')}</h3>
-            <div className="space-y-3">
-              {submissions.map((sub) => (
-                <div key={sub.id} className="bg-white p-4 rounded-xl border border-zinc-100 flex items-center justify-between group hover:border-red-200 transition-all">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-zinc-50 rounded-xl flex items-center justify-center text-zinc-400 group-hover:bg-red-50 group-hover:text-red-600 transition-all">
-                      <LayoutGrid size={20} />
+          {/* Stats Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-white p-6 rounded-2xl border border-zinc-100 shadow-sm flex items-center gap-4">
+              <div className="w-12 h-12 bg-red-50 rounded-xl flex items-center justify-center text-red-600">
+                <Zap size={24} />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-zinc-500">{t('activeWorkflows')}</p>
+                <p className="text-2xl font-bold text-zinc-900">{stats.totalWorkflows}</p>
+              </div>
+            </div>
+            <div className="bg-white p-6 rounded-2xl border border-zinc-100 shadow-sm flex items-center gap-4">
+              <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
+                <TrendingUp size={24} />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-zinc-500">{t('totalExecutions')}</p>
+                <p className="text-2xl font-bold text-zinc-900">{stats.totalUsage}</p>
+              </div>
+            </div>
+            <div className="bg-white p-6 rounded-2xl border border-zinc-100 shadow-sm flex items-center gap-4">
+              <div className="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
+                <Users size={24} />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-zinc-500">{t('topContributors')}</p>
+                <p className="text-2xl font-bold text-zinc-900">12</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Workflows Section */}
+            <div className="lg:col-span-2 space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-zinc-900">{t('topWorkflows')}</h3>
+                <Link to="/workflows" className="text-sm font-semibold text-red-600 hover:underline">{t('viewAll')}</Link>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {workflows.map((w) => (
+                  <Link
+                    key={w.id}
+                    to={`/workflows/${w.id}`}
+                    className="bg-white p-6 rounded-2xl border border-zinc-100 shadow-sm hover:shadow-xl hover:shadow-zinc-200/50 hover:border-red-200 transition-all group flex flex-col"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-4">
+                        {w.isCertified && <CheckCircle2 size={18} className="text-emerald-500" />}
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{w.usageCount} {t('used')}</span>
+                      </div>
+                      <h4 className="text-lg font-bold text-zinc-900 group-hover:text-red-600 transition-colors mb-2">{w.title}</h4>
+                      <p className="text-xs text-zinc-500 line-clamp-2">{w.problem}</p>
                     </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-zinc-900">{sub.title}</h4>
-                      <p className="text-xs text-zinc-500 mt-0.5">{t('by')} {sub.userName} • {sub.workflowTitle}</p>
+                    <div className="mt-6 flex items-center justify-between text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                      <span className="flex items-center gap-1"><Sparkles size={14} className="text-red-600" /> {t('aiAgentReady')}</span>
+                      <ArrowRight size={16} className={cn("transition-all", isRTL ? "group-hover:-translate-x-1 rotate-180" : "group-hover:translate-x-1")} />
                     </div>
-                  </div>
-                  <Link to={`/workflows/${sub.workflowId}`} className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all">
-                    <ArrowRight size={20} className={cn(isRTL && "rotate-180")} />
                   </Link>
-                </div>
-              ))}
-              {submissions.length === 0 && (
-                <div className="p-8 text-center bg-white rounded-xl border border-dashed border-zinc-200">
-                  <p className="text-zinc-400 text-sm">{t('noSubmissionsYet')}</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Sidebar: Key Prompts & Contributors */}
-        <div className="space-y-8">
-          <div className="bg-white p-6 rounded-2xl border border-zinc-100 shadow-sm space-y-6">
-            <h3 className="font-bold text-zinc-900 flex items-center gap-2">
-              <Zap size={20} className="text-red-600" />
-              {t('keyPrompts')}
-            </h3>
-            <div className="space-y-4">
-              {prompts.map((p) => (
-                <div key={p.id} className="p-4 bg-zinc-50 rounded-xl border border-zinc-100 space-y-2 group hover:border-red-200 transition-all">
-                  <h4 className="text-sm font-bold text-zinc-900 group-hover:text-red-600 transition-colors">{p.title}</h4>
-                  <p className="text-xs text-zinc-500 line-clamp-2 font-mono">{p.content}</p>
-                  <div className="flex items-center justify-between pt-2">
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{p.tool}</span>
-                    <span className="text-[10px] font-bold text-red-600 uppercase tracking-widest">{p.votes} {t('votes')}</span>
+                ))}
+                {workflows.length === 0 && (
+                  <div className="col-span-2 p-12 text-center bg-white rounded-2xl border border-dashed border-zinc-200">
+                    <p className="text-zinc-400 italic">{t('noWorkflowsDept')}</p>
                   </div>
-                </div>
-              ))}
-              {prompts.length === 0 && (
-                <p className="text-xs text-zinc-400 italic text-center">{t('noPromptsCategory')}</p>
-              )}
-            </div>
-            <Link to="/prompts" className="w-full py-2 bg-zinc-900 text-white text-center text-xs font-bold rounded-lg hover:bg-zinc-800 transition-all block">
-              {t('explorePromptLibrary')}
-            </Link>
-          </div>
+                )}
+              </div>
 
-          <div className="bg-zinc-900 p-6 rounded-2xl text-white space-y-6">
-            <h3 className="font-bold flex items-center gap-2">
-              <Award size={20} className="text-red-600" />
-              {t('topContributors')}
-            </h3>
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-zinc-800 rounded-lg flex items-center justify-center font-bold text-zinc-400 text-xs">
-                      {i === 1 ? 'JD' : i === 2 ? 'AS' : 'MK'}
+              {/* Recent Outputs */}
+              <div className="space-y-4 pt-4">
+                <h3 className="text-xl font-bold text-zinc-900">{t('exampleOutputs')}</h3>
+                <div className="space-y-3">
+                  {submissions.map((sub) => (
+                    <div key={sub.id} className="bg-white p-4 rounded-xl border border-zinc-100 flex items-center justify-between group hover:border-red-200 transition-all">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-zinc-50 rounded-xl flex items-center justify-center text-zinc-400 group-hover:bg-red-50 group-hover:text-red-600 transition-all">
+                          <LayoutGrid size={20} />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-zinc-900">{sub.title}</h4>
+                          <p className="text-xs text-zinc-500 mt-0.5">{t('by')} {sub.userName} • {sub.workflowTitle}</p>
+                        </div>
+                      </div>
+                      <Link to={`/workflows/${sub.workflowId}`} className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all">
+                        <ArrowRight size={20} className={cn(isRTL && "rotate-180")} />
+                      </Link>
                     </div>
-                    <span className="text-sm font-medium text-zinc-300">{i === 1 ? 'John Doe' : i === 2 ? 'Ahmed S.' : 'Maria K.'}</span>
-                  </div>
-                  <span className="text-xs font-bold text-red-400">{1200 - (i * 200)} {t('points')}</span>
+                  ))}
+                  {submissions.length === 0 && (
+                    <div className="p-8 text-center bg-white rounded-xl border border-dashed border-zinc-200">
+                      <p className="text-zinc-400 text-sm">{t('noSubmissionsYet')}</p>
+                    </div>
+                  )}
                 </div>
-              ))}
+              </div>
+            </div>
+
+            {/* Sidebar: Key Prompts & Contributors */}
+            <div className="space-y-8">
+              <div className="bg-white p-6 rounded-2xl border border-zinc-100 shadow-sm space-y-6">
+                <h3 className="font-bold text-zinc-900 flex items-center gap-2">
+                  <Zap size={20} className="text-red-600" />
+                  {t('keyPrompts')}
+                </h3>
+                <div className="space-y-4">
+                  {prompts.map((p) => (
+                    <div key={p.id} className="p-4 bg-zinc-50 rounded-xl border border-zinc-100 space-y-2 group hover:border-red-200 transition-all">
+                      <h4 className="text-sm font-bold text-zinc-900 group-hover:text-red-600 transition-colors">{p.title}</h4>
+                      <p className="text-xs text-zinc-500 line-clamp-2 font-mono">{p.content}</p>
+                      <div className="flex items-center justify-between pt-2">
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{p.tool}</span>
+                        <span className="text-[10px] font-bold text-red-600 uppercase tracking-widest">{p.votes} {t('votes')}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {prompts.length === 0 && (
+                    <p className="text-xs text-zinc-400 italic text-center">{t('noPromptsCategory')}</p>
+                  )}
+                </div>
+                <Link to="/prompts" className="w-full py-2 bg-zinc-900 text-white text-center text-xs font-bold rounded-lg hover:bg-zinc-800 transition-all block">
+                  {t('explorePromptLibrary')}
+                </Link>
+              </div>
+
+              <div className="bg-zinc-900 p-6 rounded-2xl text-white space-y-6">
+                <h3 className="font-bold flex items-center gap-2">
+                  <Award size={20} className="text-red-600" />
+                  {t('topContributors')}
+                </h3>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Department-level contributor ranking is coming soon — pull from the main Leaderboard for now.
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
-    </>
-  )}
-  </div>
-);
+        </>
+      )}
+    </div>
+  );
 };
