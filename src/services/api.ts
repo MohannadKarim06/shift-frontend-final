@@ -87,8 +87,8 @@ export async function generateWorkflowAgentResponse(
   history: ChatMessage[],
   userInput: string,
   userImage?: string
-): Promise<string> {
-  const result = await apiFetch<{ response: string; usage: object }>(
+): Promise<{ text: string; file?: import('../types').GeneratedFile }> {
+  const result = await apiFetch<{ response: string; usage: object; file?: import('../types').GeneratedFile }>(
     `/agents/${workflow.id}/chat`,
     {
       method: 'POST',
@@ -99,7 +99,7 @@ export async function generateWorkflowAgentResponse(
       }),
     }
   );
-  return result.response;
+  return { text: result.response, file: result.file };
 }
 
 // ── Prompt Optimize ───────────────────────────────────────────────────────────
@@ -313,6 +313,35 @@ export async function fetchAdminStats(): Promise<{
   pending_submissions: number; total_prompts: number;
 }> {
   return apiFetch('/admin/stats');
+}
+
+// ── Structured AI-generated files (base64 from /agents chat) ──────────────────
+
+function base64ToBlob(base64: string, mimeType: string): Blob {
+  const byteChars = atob(base64);
+  const byteNumbers = new Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+  return new Blob([new Uint8Array(byteNumbers)], { type: mimeType });
+}
+
+/** Triggers a browser download for an AI-generated file (no extra network call). */
+export function downloadGeneratedFile(file: { data_base64: string; mime_type: string; filename: string }): void {
+  const blob = base64ToBlob(file.data_base64, file.mime_type);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = file.filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Returns an object URL for in-app preview (pdf) or raw HTML text (html). Caller must revoke object URLs. */
+export function previewGeneratedFile(file: { data_base64: string; mime_type: string; type: string }): { url?: string; html?: string } {
+  if (file.type === 'html') {
+    return { html: atob(file.data_base64) };
+  }
+  const blob = base64ToBlob(file.data_base64, file.mime_type);
+  return { url: URL.createObjectURL(blob) };
 }
 
 // ── File Generation & Preview ─────────────────────────────────────────────────

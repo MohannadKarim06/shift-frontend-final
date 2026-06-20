@@ -71,8 +71,18 @@ export interface Submission {
   createdAt: string;
 }
 
+export interface GeneratedFile {
+  type: 'pdf' | 'pptx' | 'html';
+  title: string;
+  filename: string;
+  mime_type: string;
+  data_base64: string;
+  previewable: boolean;
+}
+
 export interface ChatMessage {
   role: 'user' | 'model';
   text: string;
   image?: string; // Base64 encoded image
+  file?: GeneratedFile; // Set when the AI generated a downloadable/previewable file this turn
 }

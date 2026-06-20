@@ -5,7 +5,7 @@ import {
   ChevronDown, Eye, ExternalLink
 } from 'lucide-react';
 import { ChatMessage, Workflow } from '../types';
-import { generateWorkflowAgentResponse, generateFile, previewFile } from '../services/api';
+import { generateWorkflowAgentResponse, generateFile, previewFile, downloadGeneratedFile, previewGeneratedFile } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -99,10 +99,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ workflow }) => {
     setLoading(true);
 
     try {
-      const response = await generateWorkflowAgentResponse(
+      const result = await generateWorkflowAgentResponse(
         workflow, messages, currentInput, currentImage || undefined
       );
-      setMessages(prev => [...prev, { role: 'model', text: response }]);
+      setMessages(prev => [...prev, { role: 'model', text: result.text, file: result.file }]);
     } catch (error: any) {
       const detail = error?.message || t('chatError');
       const isRateLimit = detail.toLowerCase().includes('budget') || detail.includes('429');
@@ -164,6 +164,24 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ workflow }) => {
       }
     } catch (err: any) {
       setPreview({ format, title: workflow.title, loading: false, error: err.message || 'Preview failed' });
+    }
+  };
+
+  const handlePreviewGenerated = (file: NonNullable<ChatMessage['file']>) => {
+    if (!file.previewable) return;
+    setPreview({ format: file.type as PreviewFormat, title: file.title, loading: true, error: null });
+    try {
+      const result = previewGeneratedFile(file);
+      setPreview({
+        format: file.type as PreviewFormat,
+        title: file.title,
+        loading: false,
+        error: null,
+        htmlContent: result.html,
+        blobUrl: result.url,
+      });
+    } catch (err: any) {
+      setPreview({ format: file.type as PreviewFormat, title: file.title, loading: false, error: err.message || 'Preview failed' });
     }
   };
 
@@ -232,6 +250,37 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ workflow }) => {
                 <div className="prose prose-sm max-w-none prose-zinc">
                   <ReactMarkdown>{msg.text}</ReactMarkdown>
                 </div>
+
+                {/* Dual output: auto-generated file card (download + preview) */}
+                {msg.file && (
+                  <div className="mt-3 flex items-center gap-3 p-3 bg-white border border-zinc-200 rounded-xl shadow-sm">
+                    <div className="w-10 h-10 rounded-lg bg-red-50 text-red-600 flex items-center justify-center flex-shrink-0">
+                      {msg.file.type === 'pdf' && <FileText size={20} />}
+                      {msg.file.type === 'pptx' && <Presentation size={20} />}
+                      {msg.file.type === 'html' && <Code2 size={20} />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-zinc-900 truncate">{msg.file.title}</p>
+                      <p className="text-[10px] text-zinc-400 uppercase tracking-wide">{msg.file.type} · {msg.file.filename}</p>
+                    </div>
+                    {msg.file.previewable && (
+                      <button
+                        onClick={() => handlePreviewGenerated(msg.file!)}
+                        className="p-2 text-zinc-500 hover:text-red-600 bg-zinc-50 rounded-lg border border-zinc-100"
+                        title="Preview"
+                      >
+                        <Eye size={16} />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => downloadGeneratedFile(msg.file!)}
+                      className="p-2 text-white bg-red-600 hover:bg-red-700 rounded-lg"
+                      title="Download"
+                    >
+                      <Download size={16} />
+                    </button>
+                  </div>
+                )}
 
                 {/* Action buttons for model messages */}
                 {msg.role === 'model' && (
