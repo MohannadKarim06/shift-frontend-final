@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Send, Loader2, User, Bot, Sparkles, RefreshCw, Copy, Check,
-  Image as ImageIcon, X, FileText, Presentation, Code2, Download, ChevronDown
+  Image as ImageIcon, X, FileText, Presentation, Code2, Download,
+  ChevronDown, Eye, ExternalLink
 } from 'lucide-react';
 import { ChatMessage, Workflow } from '../types';
-import { generateWorkflowAgentResponse, generateFile } from '../services/api';
+import { generateWorkflowAgentResponse, generateFile, previewFile } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -15,12 +16,27 @@ interface ChatInterfaceProps {
 }
 
 type ExportFormat = 'pdf' | 'pptx' | 'html';
+type PreviewFormat = 'html' | 'pdf';
 
 const EXPORT_OPTIONS: { format: ExportFormat; label: string; icon: React.ElementType; color: string }[] = [
   { format: 'pdf',  label: 'Export PDF',   icon: FileText,      color: 'text-red-600' },
   { format: 'pptx', label: 'Export PPTX',  icon: Presentation,  color: 'text-orange-500' },
   { format: 'html', label: 'Export HTML',  icon: Code2,         color: 'text-blue-600' },
 ];
+
+const PREVIEW_OPTIONS: { format: PreviewFormat; label: string; icon: React.ElementType; color: string }[] = [
+  { format: 'html', label: 'Preview HTML', icon: Code2,    color: 'text-blue-600' },
+  { format: 'pdf',  label: 'Preview PDF',  icon: FileText, color: 'text-red-600' },
+];
+
+interface PreviewState {
+  format: PreviewFormat;
+  title: string;
+  loading: boolean;
+  error: string | null;
+  htmlContent?: string; // for 'html' — raw markup, rendered via srcDoc
+  blobUrl?: string;     // for 'pdf' — object URL
+}
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({ workflow }) => {
   const { t, isRTL } = useLanguage();
@@ -31,6 +47,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ workflow }) => {
   const [copied, setCopied] = useState<number | null>(null);
   const [exporting, setExporting] = useState<ExportFormat | null>(null);
   const [exportMenuIdx, setExportMenuIdx] = useState<number | null>(null);
+  const [previewMenuIdx, setPreviewMenuIdx] = useState<number | null>(null);
+  const [preview, setPreview] = useState<PreviewState | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -45,13 +63,23 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ workflow }) => {
     }
   }, [messages]);
 
-  // Close export menu on outside click
+  // Close export/preview menus on outside click
   useEffect(() => {
-    if (exportMenuIdx === null) return;
-    const close = () => setExportMenuIdx(null);
+    if (exportMenuIdx === null && previewMenuIdx === null) return;
+    const close = () => {
+      setExportMenuIdx(null);
+      setPreviewMenuIdx(null);
+    };
     window.addEventListener('click', close);
     return () => window.removeEventListener('click', close);
-  }, [exportMenuIdx]);
+  }, [exportMenuIdx, previewMenuIdx]);
+
+  // Revoke any outstanding PDF blob URL when the preview modal closes / unmounts
+  useEffect(() => {
+    return () => {
+      if (preview?.blobUrl) URL.revokeObjectURL(preview.blobUrl);
+    };
+  }, [preview?.blobUrl]);
 
   const handleSend = async () => {
     if ((!input.trim() && !image) || loading) return;
@@ -112,6 +140,30 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ workflow }) => {
     } finally {
       setExporting(null);
     }
+  };
+
+  const handlePreview = async (format: PreviewFormat, msgText: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPreviewMenuIdx(null);
+
+    // Open the modal immediately in a loading state so the click feels responsive
+    setPreview({ format, title: workflow.title, loading: true, error: null });
+
+    try {
+      const result = await previewFile(format, workflow.title, msgText, workflow.title);
+      if (format === 'html') {
+        setPreview({ format, title: workflow.title, loading: false, error: null, htmlContent: result });
+      } else {
+        setPreview({ format, title: workflow.title, loading: false, error: null, blobUrl: result });
+      }
+    } catch (err: any) {
+      setPreview({ format, title: workflow.title, loading: false, error: err.message || 'Preview failed' });
+    }
+  };
+
+  const closePreview = () => {
+    if (preview?.blobUrl) URL.revokeObjectURL(preview.blobUrl);
+    setPreview(null);
   };
 
   return (
@@ -177,7 +229,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ workflow }) => {
 
                 {/* Action buttons for model messages */}
                 {msg.role === 'model' && (
-                  <div className="absolute -right-20 top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                  <div className="absolute -right-32 top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-all">
                     {/* Copy */}
                     <button
                       onClick={() => copyToClipboard(msg.text, i)}
@@ -187,10 +239,40 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ workflow }) => {
                       {copied === i ? <Check size={15} className="text-emerald-500" /> : <Copy size={15} />}
                     </button>
 
+                    {/* Preview menu trigger */}
+                    <div className="relative">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setPreviewMenuIdx(previewMenuIdx === i ? null : i); setExportMenuIdx(null); }}
+                        className="p-2 text-zinc-400 hover:text-red-600 bg-white rounded-lg border border-zinc-100 shadow-sm flex items-center gap-0.5"
+                        title="Preview"
+                      >
+                        <Eye size={15} />
+                        <ChevronDown size={10} />
+                      </button>
+
+                      {previewMenuIdx === i && (
+                        <div
+                          className="absolute left-full ml-2 top-0 bg-white border border-zinc-100 rounded-xl shadow-xl z-50 overflow-hidden min-w-[140px]"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {PREVIEW_OPTIONS.map(({ format, label, icon: Icon, color }) => (
+                            <button
+                              key={format}
+                              onClick={(e) => handlePreview(format, msg.text, e)}
+                              className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-zinc-700 hover:bg-zinc-50 w-full text-left transition-colors"
+                            >
+                              <Icon size={14} className={color} />
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
                     {/* Export menu trigger */}
                     <div className="relative">
                       <button
-                        onClick={(e) => { e.stopPropagation(); setExportMenuIdx(exportMenuIdx === i ? null : i); }}
+                        onClick={(e) => { e.stopPropagation(); setExportMenuIdx(exportMenuIdx === i ? null : i); setPreviewMenuIdx(null); }}
                         className="p-2 text-zinc-400 hover:text-red-600 bg-white rounded-lg border border-zinc-100 shadow-sm flex items-center gap-0.5"
                         title="Export"
                         disabled={!!exporting}
@@ -293,6 +375,85 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ workflow }) => {
           Powered by Claude
         </p>
       </div>
+
+      {/* In-app Preview Modal (HTML / PDF only) */}
+      <AnimatePresence>
+        {preview && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-zinc-900/70 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 10 }}
+              className="bg-white w-full max-w-4xl h-[85vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+            >
+              <div className="p-5 border-b border-zinc-100 flex items-center justify-between bg-zinc-50 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-zinc-900 rounded-xl flex items-center justify-center text-white">
+                    {preview.format === 'html' ? <Code2 size={18} /> : <FileText size={18} />}
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-zinc-900">
+                      {preview.format === 'html' ? 'HTML Preview' : 'PDF Preview'}
+                    </p>
+                    <p className="text-xs text-zinc-500">{preview.title}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {preview.format === 'pdf' && preview.blobUrl && (
+                    <a
+                      href={preview.blobUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-zinc-200 text-zinc-600 text-xs font-bold rounded-lg hover:bg-zinc-100 transition-all"
+                    >
+                      <ExternalLink size={14} /> Open in new tab
+                    </a>
+                  )}
+                  <button
+                    onClick={closePreview}
+                    className="p-2 hover:bg-white rounded-full text-zinc-400 transition-all"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 bg-zinc-100 relative overflow-hidden">
+                {preview.loading && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-zinc-400">
+                    <Loader2 size={28} className="animate-spin" />
+                    <p className="text-sm font-medium">Rendering preview…</p>
+                  </div>
+                )}
+
+                {!preview.loading && preview.error && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center px-8">
+                    <p className="text-sm font-bold text-red-600">Preview failed</p>
+                    <p className="text-xs text-zinc-500">{preview.error}</p>
+                  </div>
+                )}
+
+                {!preview.loading && !preview.error && preview.format === 'html' && preview.htmlContent && (
+                  <iframe
+                    title="HTML preview"
+                    srcDoc={preview.htmlContent}
+                    sandbox="allow-same-origin"
+                    className="w-full h-full bg-white"
+                  />
+                )}
+
+                {!preview.loading && !preview.error && preview.format === 'pdf' && preview.blobUrl && (
+                  <iframe
+                    title="PDF preview"
+                    src={preview.blobUrl}
+                    className="w-full h-full bg-white"
+                  />
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
