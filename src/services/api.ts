@@ -15,6 +15,26 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 // CPU) — give requests generous headroom before giving up client-side.
 const REQUEST_TIMEOUT_MS = 60000;
 
+export interface TokenUsage {
+  tokens_used: number;
+  budget: number;
+  remaining: number;
+  over_budget: boolean;
+}
+
+export interface TokenHistoryPoint {
+  date: string;
+  tokens_used: number;
+}
+
+export interface TokenSummary {
+  budget: number;
+  daily: number;
+  weekly: number;
+  monthly: number;
+  history: TokenHistoryPoint[];
+}
+
 // ── Core fetch helper ─────────────────────────────────────────────────────────
 
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -149,6 +169,16 @@ export async function createPrompt(data: {
   return apiFetch('/prompts/', { method: 'POST', body: JSON.stringify(data) });
 }
 
+export async function updatePrompt(
+  id: string,
+  data: {
+    title: string; category: string; content: string; tool: string;
+    thumbnail?: string; labels?: string[];
+  }
+): Promise<Prompt> {
+  return apiFetch(`/prompts/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
 export async function votePrompt(promptId: string): Promise<{ votes: number; voted: boolean }> {
   return apiFetch(`/prompts/${promptId}/vote`, { method: 'POST' });
 }
@@ -220,24 +250,60 @@ export async function deleteUser(uid: string): Promise<void> {
   return apiFetch(`/users/${uid}`, { method: 'DELETE' });
 }
 
-// ── Token Usage ───────────────────────────────────────────────────────────────
+// ── Token Usage (self) ─────────────────────────────────────────────────────────
 
-export async function fetchMyTokenUsage(): Promise<{
-  tokens_used: number; budget: number; remaining: number; over_budget: boolean;
-}> {
+export async function fetchMyTokenUsage(): Promise<TokenUsage> {
   return apiFetch('/users/me/tokens');
 }
 
-export async function fetchUserTokenUsage(uid: string): Promise<{
-  tokens_used: number; budget: number; remaining: number; over_budget: boolean;
-}> {
+export async function fetchMyTokenHistory(): Promise<TokenHistoryPoint[]> {
+  return apiFetch('/users/me/tokens/history');
+}
+
+export async function fetchMyTokenSummary(): Promise<TokenSummary> {
+  return apiFetch('/users/me/tokens/summary');
+}
+
+// ── Token Usage (admin — per user) ─────────────────────────────────────────────
+
+export async function fetchUserTokenUsage(uid: string): Promise<TokenUsage> {
   return apiFetch(`/users/${uid}/tokens`);
 }
 
-export async function fetchOrgTokenUsage(): Promise<{
-  tokens_used: number; budget: number; remaining: number; over_budget: boolean;
-}> {
+export async function fetchUserTokenHistory(uid: string): Promise<TokenHistoryPoint[]> {
+  return apiFetch(`/users/${uid}/tokens/history`);
+}
+
+export async function fetchUserTokenSummary(uid: string): Promise<TokenSummary> {
+  return apiFetch(`/users/${uid}/tokens/summary`);
+}
+
+export async function updateUserTokenBudget(uid: string, dailyBudget: number): Promise<void> {
+  return apiFetch(`/users/${uid}/tokens/budget`, {
+    method: 'PUT',
+    body: JSON.stringify({ daily_budget: dailyBudget }),
+  });
+}
+
+// ── Token Usage (admin — org-wide) ─────────────────────────────────────────────
+
+export async function fetchOrgTokenUsage(): Promise<TokenUsage> {
   return apiFetch('/admin/tokens/org');
+}
+
+export async function fetchOrgTokenHistory(): Promise<TokenHistoryPoint[]> {
+  return apiFetch('/admin/tokens/org/history');
+}
+
+export async function fetchOrgTokenSummary(): Promise<TokenSummary> {
+  return apiFetch('/admin/tokens/org/summary');
+}
+
+export async function updateOrgTokenBudget(dailyBudget: number): Promise<void> {
+  return apiFetch('/admin/tokens/org/budget', {
+    method: 'PUT',
+    body: JSON.stringify({ daily_budget: dailyBudget }),
+  });
 }
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
@@ -249,16 +315,11 @@ export async function fetchAdminStats(): Promise<{
   return apiFetch('/admin/stats');
 }
 
-// ── File Generation ───────────────────────────────────────────────────────────
+// ── File Generation & Preview ─────────────────────────────────────────────────
 
 type FileFormat = 'pdf' | 'pptx' | 'html';
 
-export async function generateFile(
-  format: FileFormat,
-  title: string,
-  content: string,
-  workflowTitle?: string
-): Promise<void> {
+async function authedFetch(path: string, body: object): Promise<Response> {
   const user = auth.currentUser;
   if (!user) throw new Error('Not authenticated');
   const token = await user.getIdToken();
@@ -266,40 +327,85 @@ export async function generateFile(
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
-    const res = await fetch(`${API_URL}/files/generate/${format}`, {
+    const res = await fetch(`${API_URL}${path}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ title, content, workflow_title: workflowTitle || '' }),
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
-
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: 'File generation failed' }));
+      const err = await res.json().catch(() => ({ detail: 'Request failed' }));
       throw new Error(err.detail || `API error ${res.status}`);
     }
-
-    const blob = await res.blob();
-    const ext = format === 'pptx' ? 'pptx' : format;
-    const filename =
-      res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] ||
-      `${title.replace(/\s+/g, '_')}.${ext}`;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    return res;
   } catch (e: any) {
     if (e.name === 'AbortError') {
-      throw new Error('File generation timed out. Please try again.');
+      throw new Error('The request timed out. Please try again.');
     }
     throw e;
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+export async function generateFile(
+  format: FileFormat,
+  title: string,
+  content: string,
+  workflowTitle?: string
+): Promise<void> {
+  const res = await authedFetch(`/files/generate/${format}`, {
+    title,
+    content,
+    workflow_title: workflowTitle || '',
+  });
+
+  const blob = await res.blob();
+  const ext = format === 'pptx' ? 'pptx' : format;
+  const filename =
+    res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] ||
+    `${title.replace(/\s+/g, '_')}.${ext}`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Fetch an in-app preview of a generated file (no download).
+ * Only 'html' and 'pdf' are supported for preview.
+ * Returns either raw HTML text (for 'html') or a blob object URL (for 'pdf')
+ * depending on `format`, ready to drop into an <iframe>.
+ */
+export async function previewFile(
+  format: 'html' | 'pdf',
+  title: string,
+  content: string,
+  workflowTitle?: string
+): Promise<string> {
+  if (format === 'html') {
+    const res = await authedFetch('/files/preview/html', {
+      title,
+      content,
+      workflow_title: workflowTitle || '',
+    });
+    return res.text();
+  }
+
+  // PDF preview: hit the normal generate endpoint and turn the bytes into
+  // a blob URL the <iframe>/<embed> can point at directly.
+  const res = await authedFetch('/files/generate/pdf', {
+    title,
+    content,
+    workflow_title: workflowTitle || '',
+  });
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
 }
 
 // ── Pending user approvals ────────────────────────────────────────────────────
