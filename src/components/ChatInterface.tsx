@@ -55,7 +55,13 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ workflow }) => {
   useEffect(() => {
     const greeting = t('chatGreeting').replace('{title}', workflow.title);
     setMessages([{ role: 'model', text: greeting }]);
-  }, [workflow, t]);
+    // Intentionally NOT depending on `t` here — this should only reset the
+    // conversation when the user navigates to a different workflow, not on
+    // every re-render that happens to produce a new `t` reference (language
+    // toggle, background profile refresh, etc). See LanguageContext.tsx for
+    // the underlying fix to `t`'s identity stability as well.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workflow.id]);
 
   useEffect(() => {
     if (scrollRef.current) {

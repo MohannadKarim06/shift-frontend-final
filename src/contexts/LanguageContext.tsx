@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 
 type Language = 'en' | 'ar';
 
@@ -329,18 +329,35 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     document.documentElement.lang = language;
   }, [language]);
 
-  const t = (key: string): string => {
+  // IMPORTANT: t must be stable across renders that don't change `language`.
+  // Components like ChatInterface key effects off `t` (e.g. to regenerate a
+  // localized greeting). If `t` were a fresh function identity on every
+  // render — as a plain inline function would be — any unrelated parent
+  // re-render (e.g. App's 30s background profile refresh, or a focus event)
+  // would trigger those effects and wipe out in-progress state such as chat
+  // history. useCallback keeps the reference stable until `language` itself
+  // actually changes.
+  const t = useCallback((key: string): string => {
     if (!translations[key]) {
       console.warn(`Translation key not found: ${key}`);
       return key;
     }
     return translations[key][language];
-  };
+  }, [language]);
 
   const isRTL = language === 'ar';
 
+  // Same reasoning for the context value itself: without useMemo, every
+  // LanguageProvider render hands consumers a brand-new object, which is
+  // enough to make useContext() callers re-render and re-run effects keyed
+  // on the context value even when nothing meaningful changed.
+  const value = useMemo<LanguageContextType>(
+    () => ({ language, setLanguage, t, isRTL }),
+    [language, setLanguage, t, isRTL]
+  );
+
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, t, isRTL }}>
+    <LanguageContext.Provider value={value}>
       <div dir={isRTL ? 'rtl' : 'ltr'} className="h-full">
         {children}
       </div>
