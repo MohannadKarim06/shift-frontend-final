@@ -7,7 +7,7 @@
  */
 
 import { auth } from '../firebase';
-import { ChatMessage, Workflow, User, Prompt, Submission } from '../types';
+import { ChatMessage, Workflow, User, Prompt, Submission, FileGenerationSettings } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -187,6 +187,55 @@ export async function deletePrompt(promptId: string): Promise<void> {
   return apiFetch(`/prompts/${promptId}`, { method: 'DELETE' });
 }
 
+// ── Files ─────────────────────────────────────────────────────────────────────
+
+export interface UploadedFile {
+  url: string;
+  filename: string;
+  size: number;
+}
+
+/**
+ * Upload a file through the backend (which stores it in Firebase Storage using
+ * the Admin SDK, so it works regardless of client-side Storage security rules).
+ * Uses a raw fetch instead of apiFetch because the browser needs to set its own
+ * multipart/form-data boundary — it must NOT be overridden with a JSON header.
+ */
+export async function uploadFile(file: File): Promise<UploadedFile> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not authenticated');
+
+  const token = await user.getIdToken();
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${API_URL}/files/upload`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(err.detail || `Upload failed (${res.status})`);
+    }
+
+    return res.json();
+  } catch (e: any) {
+    if (e.name === 'AbortError') {
+      throw new Error('The upload is taking longer than usual. Please try again.');
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 // ── Submissions ───────────────────────────────────────────────────────────────
 
 export async function fetchMySubmissions(): Promise<Submission[]> {
@@ -315,6 +364,18 @@ export async function fetchAdminStats(): Promise<{
   return apiFetch('/admin/stats');
 }
 
+// ── File Generation Settings (Admin Panel) ─────────────────────────────────────
+
+export async function fetchFileSettings(): Promise<FileGenerationSettings> {
+  return apiFetch('/admin/file-settings');
+}
+
+export async function updateFileSettings(
+  data: Partial<FileGenerationSettings>
+): Promise<FileGenerationSettings> {
+  return apiFetch('/admin/file-settings', { method: 'PUT', body: JSON.stringify(data) });
+}
+
 // ── Structured AI-generated files (base64 from /agents chat) ──────────────────
 
 function base64ToBlob(base64: string, mimeType: string): Blob {
@@ -346,7 +407,7 @@ export function previewGeneratedFile(file: { data_base64: string; mime_type: str
 
 // ── File Generation & Preview ─────────────────────────────────────────────────
 
-type FileFormat = 'pdf' | 'pptx' | 'html';
+type FileFormat = 'pdf' | 'pptx' | 'docx' | 'html';
 
 async function authedFetch(path: string, body: object): Promise<Response> {
   const user = auth.currentUser;

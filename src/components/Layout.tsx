@@ -74,9 +74,9 @@ export const Layout: React.FC<LayoutProps> = ({ user }) => {
         )}
       >
         <div className="p-6 flex items-center justify-between">
-          <div className={cn("flex items-center gap-3", !isSidebarOpen && "hidden")}>
-            <div className="w-8 h-8 bg-red-600 rounded flex items-center justify-center text-white font-bold text-xl">S</div>
-            <span className="font-bold text-xl tracking-tight text-zinc-900">SHIFT AI</span>
+          <div className="flex items-center gap-3">
+            <img src="/logo_main.png" alt="Shift AI" className="w-8 h-8 object-contain shrink-0" />
+            <span className={cn("font-bold text-xl tracking-tight text-zinc-900", !isSidebarOpen && "hidden")}>SHIFT AI</span>
           </div>
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-1 hover:bg-zinc-100 rounded text-zinc-500">
             {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}

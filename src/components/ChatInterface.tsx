@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Send, Loader2, User, Bot, Sparkles, RefreshCw, Copy, Check,
   Image as ImageIcon, X, FileText, Presentation, Code2, Download,
-  ChevronDown, Eye, ExternalLink
+  ChevronDown, Eye, ExternalLink, FileType
 } from 'lucide-react';
 import { ChatMessage, Workflow } from '../types';
 import { generateWorkflowAgentResponse, generateFile, previewFile, downloadGeneratedFile, previewGeneratedFile } from '../services/api';
@@ -15,12 +15,13 @@ interface ChatInterfaceProps {
   workflow: Workflow;
 }
 
-type ExportFormat = 'pdf' | 'pptx' | 'html';
+type ExportFormat = 'pdf' | 'pptx' | 'docx' | 'html';
 type PreviewFormat = 'html' | 'pdf';
 
 const EXPORT_OPTIONS: { format: ExportFormat; label: string; icon: React.ElementType; color: string }[] = [
   { format: 'pdf',  label: 'Export PDF',   icon: FileText,      color: 'text-red-600' },
   { format: 'pptx', label: 'Export PPTX',  icon: Presentation,  color: 'text-orange-500' },
+  { format: 'docx', label: 'Export Word',  icon: FileType,      color: 'text-blue-700' },
   { format: 'html', label: 'Export HTML',  icon: Code2,         color: 'text-blue-600' },
 ];
 
@@ -257,6 +258,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ workflow }) => {
                     <div className="w-10 h-10 rounded-lg bg-red-50 text-red-600 flex items-center justify-center flex-shrink-0">
                       {msg.file.type === 'pdf' && <FileText size={20} />}
                       {msg.file.type === 'pptx' && <Presentation size={20} />}
+                      {msg.file.type === 'docx' && <FileType size={20} />}
                       {msg.file.type === 'html' && <Code2 size={20} />}
                     </div>
                     <div className="flex-1 min-w-0">

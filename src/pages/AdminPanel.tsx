@@ -9,9 +9,10 @@ import {
   fetchOrgTokenSummary, fetchUserTokenSummary,
   updateOrgTokenBudget, updateUserTokenBudget,
   fetchPrompts, updatePrompt, deletePrompt as apiDeletePrompt,
+  fetchFileSettings, updateFileSettings,
   TokenSummary,
 } from '../services/api';
-import { User, Workflow, Submission, Prompt } from '../types';
+import { User, Workflow, Submission, Prompt, FileGenerationSettings } from '../types';
 import {
   Users,
   Settings,
@@ -33,7 +34,9 @@ import {
   Inbox,
   Pencil,
   Library,
-  Save
+  Save,
+  Palette,
+  FileText
 } from 'lucide-react';
 import { seedDatabase } from '../lib/seed';
 import { cn } from '../lib/utils';
@@ -226,6 +229,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user }) => {
   const [promptSaving, setPromptSaving] = useState(false);
   const [promptDeleting, setPromptDeleting] = useState<Record<string, boolean>>({});
 
+  // ── File generation settings state ───────────────────────────────────────
+  const [fileSettings, setFileSettings] = useState<FileGenerationSettings | null>(null);
+  const [fileSettingsForm, setFileSettingsForm] = useState<FileGenerationSettings | null>(null);
+  const [fileSettingsLoading, setFileSettingsLoading] = useState(true);
+  const [fileSettingsSaving, setFileSettingsSaving] = useState(false);
+  const [fileSettingsSaved, setFileSettingsSaved] = useState(false);
+
   const [workflowForm, setWorkflowForm] = useState<Omit<Workflow, 'id'>>({
     title: '',
     department: 'Creative',
@@ -269,6 +279,42 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user }) => {
   useEffect(() => {
     handleRefreshOrgSummary();
   }, []);
+
+  // Load file generation settings separately so a failure here doesn't block the rest of the panel
+  useEffect(() => {
+    const loadFileSettings = async () => {
+      try {
+        const data = await fetchFileSettings();
+        setFileSettings(data);
+        setFileSettingsForm(data);
+      } catch (error) {
+        console.error('Failed to load file generation settings:', error);
+      } finally {
+        setFileSettingsLoading(false);
+      }
+    };
+    loadFileSettings();
+  }, []);
+
+  const handleSaveFileSettings = async () => {
+    if (!fileSettingsForm) return;
+    setFileSettingsSaving(true);
+    setFileSettingsSaved(false);
+    try {
+      const updated = await updateFileSettings(fileSettingsForm);
+      setFileSettings(updated);
+      setFileSettingsForm(updated);
+      setFileSettingsSaved(true);
+      setTimeout(() => setFileSettingsSaved(false), 2500);
+    } catch (error: any) {
+      alert(`Failed to save file generation settings: ${error.message}`);
+    } finally {
+      setFileSettingsSaving(false);
+    }
+  };
+
+  const fileSettingsDirty = !!fileSettings && !!fileSettingsForm &&
+    JSON.stringify(fileSettings) !== JSON.stringify(fileSettingsForm);
 
   const handleRefreshOrgSummary = async () => {
     setOrgSummaryLoading(true);
@@ -1011,6 +1057,167 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user }) => {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ── File Generation Settings ─────────────────────────────────────────── */}
+      <div className="bg-white p-6 rounded-2xl border border-zinc-100 shadow-sm space-y-6">
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-zinc-900 flex items-center gap-2">
+            <Palette size={20} className="text-red-600" />
+            File Generation Settings
+          </h3>
+          {fileSettingsLoading && <Loader2 size={16} className="animate-spin text-zinc-400" />}
+        </div>
+        <p className="text-sm text-zinc-500 -mt-4">
+          Org-wide defaults applied to every PDF, PowerPoint, and HTML file the AI agents
+          generate — brand colors, logo, footer, and general guidance. Users can still give
+          the agent specific instructions for an individual file directly in chat; those
+          take priority over these defaults for that one file.
+        </p>
+
+        {fileSettingsForm && (
+          <>
+            {/* Brand visuals */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Primary Color</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={fileSettingsForm.primary_color}
+                    onChange={e => setFileSettingsForm({ ...fileSettingsForm, primary_color: e.target.value })}
+                    className="w-10 h-10 rounded-lg border border-zinc-200 cursor-pointer shrink-0"
+                  />
+                  <input
+                    type="text"
+                    value={fileSettingsForm.primary_color}
+                    onChange={e => setFileSettingsForm({ ...fileSettingsForm, primary_color: e.target.value })}
+                    className="flex-1 px-4 py-2 bg-zinc-50 border-zinc-200 rounded-xl focus:ring-2 focus:ring-red-600 focus:border-transparent transition-all font-mono text-sm"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Accent Color</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={fileSettingsForm.accent_color}
+                    onChange={e => setFileSettingsForm({ ...fileSettingsForm, accent_color: e.target.value })}
+                    className="w-10 h-10 rounded-lg border border-zinc-200 cursor-pointer shrink-0"
+                  />
+                  <input
+                    type="text"
+                    value={fileSettingsForm.accent_color}
+                    onChange={e => setFileSettingsForm({ ...fileSettingsForm, accent_color: e.target.value })}
+                    className="flex-1 px-4 py-2 bg-zinc-50 border-zinc-200 rounded-xl focus:ring-2 focus:ring-red-600 focus:border-transparent transition-all font-mono text-sm"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Logo URL (optional)</label>
+                <input
+                  type="url"
+                  placeholder="https://.../logo.png"
+                  value={fileSettingsForm.logo_url}
+                  onChange={e => setFileSettingsForm({ ...fileSettingsForm, logo_url: e.target.value })}
+                  className="w-full px-4 py-2 bg-zinc-50 border-zinc-200 rounded-xl focus:ring-2 focus:ring-red-600 focus:border-transparent transition-all text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Footer Text</label>
+                <input
+                  type="text"
+                  placeholder="Generated by Shift AI · Telfaz11"
+                  value={fileSettingsForm.footer_text}
+                  onChange={e => setFileSettingsForm({ ...fileSettingsForm, footer_text: e.target.value })}
+                  className="w-full px-4 py-2 bg-zinc-50 border-zinc-200 rounded-xl focus:ring-2 focus:ring-red-600 focus:border-transparent transition-all text-sm"
+                />
+              </div>
+            </div>
+
+            {/* General guidance */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">
+                General Instructions (all file types)
+              </label>
+              <textarea
+                rows={3}
+                placeholder="e.g. Always write in a professional, concise tone. Use British English. Include an executive summary at the top of longer documents."
+                value={fileSettingsForm.general_instructions}
+                onChange={e => setFileSettingsForm({ ...fileSettingsForm, general_instructions: e.target.value })}
+                className="w-full px-4 py-2 bg-zinc-50 border-zinc-200 rounded-xl focus:ring-2 focus:ring-red-600 focus:border-transparent transition-all text-sm"
+              />
+            </div>
+
+            {/* Per-format guidance */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <FileText size={12} /> PDF Instructions
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder="e.g. Use formal report structure with numbered sections."
+                  value={fileSettingsForm.pdf_instructions}
+                  onChange={e => setFileSettingsForm({ ...fileSettingsForm, pdf_instructions: e.target.value })}
+                  className="w-full px-4 py-2 bg-zinc-50 border-zinc-200 rounded-xl focus:ring-2 focus:ring-red-600 focus:border-transparent transition-all text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <FileText size={12} /> PowerPoint Instructions
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder="e.g. Max 5 bullets per slide. Keep slide titles under 8 words."
+                  value={fileSettingsForm.pptx_instructions}
+                  onChange={e => setFileSettingsForm({ ...fileSettingsForm, pptx_instructions: e.target.value })}
+                  className="w-full px-4 py-2 bg-zinc-50 border-zinc-200 rounded-xl focus:ring-2 focus:ring-red-600 focus:border-transparent transition-all text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <FileText size={12} /> Word Instructions
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder="e.g. Use a memo-style layout with a summary at the top."
+                  value={fileSettingsForm.docx_instructions}
+                  onChange={e => setFileSettingsForm({ ...fileSettingsForm, docx_instructions: e.target.value })}
+                  className="w-full px-4 py-2 bg-zinc-50 border-zinc-200 rounded-xl focus:ring-2 focus:ring-red-600 focus:border-transparent transition-all text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <FileText size={12} /> HTML Instructions
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder="e.g. Optimize for print. Keep it to a single scrollable page."
+                  value={fileSettingsForm.html_instructions}
+                  onChange={e => setFileSettingsForm({ ...fileSettingsForm, html_instructions: e.target.value })}
+                  className="w-full px-4 py-2 bg-zinc-50 border-zinc-200 rounded-xl focus:ring-2 focus:ring-red-600 focus:border-transparent transition-all text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-zinc-100">
+              {fileSettingsSaved && (
+                <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+                  <CheckCircle2 size={14} /> Saved
+                </span>
+              )}
+              <button
+                onClick={handleSaveFileSettings}
+                disabled={fileSettingsSaving || !fileSettingsDirty}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition-all disabled:opacity-50"
+              >
+                {fileSettingsSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                Save Settings
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Workflow Modal */}

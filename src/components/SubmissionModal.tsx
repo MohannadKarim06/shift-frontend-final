@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Upload, Link as LinkIcon, Loader2, CheckCircle2, Sparkles } from 'lucide-react';
 import { User, Workflow, Submission, Department } from '../types';
-import { createSubmission, analyzeSubmission } from '../services/api';
+import { createSubmission, analyzeSubmission, uploadFile } from '../services/api';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../contexts/LanguageContext';
 import { motion, AnimatePresence } from 'motion/react';
@@ -40,17 +40,13 @@ export const SubmissionModal: React.FC<SubmissionModalProps> = ({ user, workflow
     setLoading(true);
 
     try {
-      // Note: file upload to Storage is kept as-is for now;
-      // backend submission only needs the link/fileUrl string.
-      // If you want to remove Firebase Storage dependency entirely,
-      // add a POST /files/upload endpoint to the backend later.
+      // File uploads go through the backend, which stores them in Firebase
+      // Storage using the Admin SDK — this works regardless of client-side
+      // Storage security rules (which were blocking direct client uploads).
       let fileUrl = '';
       if (file) {
-        const { storage } = await import('../firebase');
-        const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
-        const fileRef = ref(storage, `submissions/${user.uid}/${Date.now()}_${file.name}`);
-        await uploadBytes(fileRef, file);
-        fileUrl = await getDownloadURL(fileRef);
+        const uploaded = await uploadFile(file);
+        fileUrl = uploaded.url;
       }
 
       // AI analysis via backend

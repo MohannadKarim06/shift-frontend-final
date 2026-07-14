@@ -203,7 +203,7 @@ export const Auth: React.FC<AuthProps> = ({ onUserCreated }) => {
 
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-red-600 rounded-2xl text-white font-bold text-3xl mb-4 shadow-xl shadow-red-200">S</div>
+          <img src="/Logo_login.png" alt="Shift AI" className="w-16 h-16 object-contain mx-auto mb-4" />
           <h1 className="text-3xl font-bold text-zinc-900 tracking-tight">{t('platformTitle')}</h1>
           <p className="text-zinc-500 mt-2">{t('platformSubtitle')}</p>
         </div>

@@ -72,7 +72,7 @@ export interface Submission {
 }
 
 export interface GeneratedFile {
-  type: 'pdf' | 'pptx' | 'html';
+  type: 'pdf' | 'pptx' | 'docx' | 'html';
   title: string;
   filename: string;
   mime_type: string;
@@ -85,4 +85,16 @@ export interface ChatMessage {
   text: string;
   image?: string; // Base64 encoded image
   file?: GeneratedFile; // Set when the AI generated a downloadable/previewable file this turn
+}
+
+export interface FileGenerationSettings {
+  primary_color: string;
+  accent_color: string;
+  logo_url: string;
+  footer_text: string;
+  general_instructions: string;
+  pdf_instructions: string;
+  pptx_instructions: string;
+  docx_instructions: string;
+  html_instructions: string;
 }
