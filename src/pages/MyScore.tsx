@@ -24,6 +24,7 @@ import {
 import { motion } from 'motion/react';
 import { formatDistanceToNow, differenceInDays } from 'date-fns';
 import { Link } from 'react-router-dom';
+import { SubmissionDetailModal } from '../components/SubmissionDetailModal';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../contexts/LanguageContext';
 import { LEVELS, getLevelByPoints, getNextLevel } from '../constants/levels';
@@ -34,6 +35,7 @@ interface MyScoreProps {
 
 export const MyScore: React.FC<MyScoreProps> = ({ user }) => {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorState, setErrorState] = useState<Error | null>(null);
@@ -477,7 +479,11 @@ export const MyScore: React.FC<MyScoreProps> = ({ user }) => {
             </h3>
             <div className="space-y-3">
               {submissions.length > 0 ? submissions.map((sub) => (
-                <div key={sub.id} className="bg-white p-4 rounded-xl border border-zinc-100 flex items-center justify-between group hover:border-red-200 transition-all">
+                <div
+                  key={sub.id}
+                  onClick={() => setSelectedSubmission(sub)}
+                  className="bg-white p-4 rounded-xl border border-zinc-100 flex items-center justify-between group hover:border-red-200 transition-all cursor-pointer"
+                >
                   <div className="flex items-center gap-4">
                     <div className="w-10 h-10 bg-zinc-50 rounded-xl flex items-center justify-center text-zinc-400 group-hover:bg-red-50 group-hover:text-red-600 transition-all">
                       <CheckCircle2 size={20} />
@@ -513,6 +519,7 @@ export const MyScore: React.FC<MyScoreProps> = ({ user }) => {
                         href={sub.link}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
                         className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
                         title="Download"
                       >
@@ -602,6 +609,9 @@ export const MyScore: React.FC<MyScoreProps> = ({ user }) => {
         </div>
       </div>
     </>
+  )}
+  {selectedSubmission && (
+    <SubmissionDetailModal submission={selectedSubmission} onClose={() => setSelectedSubmission(null)} />
   )}
   </div>
 );

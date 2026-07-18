@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import { seedDatabase } from '../lib/seed';
 import { cn } from '../lib/utils';
+import { SubmissionDetailModal } from '../components/SubmissionDetailModal';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
@@ -196,6 +197,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
   const [pendingUsers, setPendingUsers] = useState<User[]>([]);
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [loading, setLoading] = useState(true);
@@ -666,11 +668,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user }) => {
                   <p className="text-xs text-zinc-500 mt-0.5">
                     {sub.userName} · {sub.workflowTitle} · {sub.outputType}
                   </p>
-                  {sub.link && (
-                    <a href={sub.link} target="_blank" rel="noopener noreferrer" className="text-xs text-red-600 hover:underline font-semibold">
-                      Download output
-                    </a>
-                  )}
+                  <button
+                    onClick={() => setSelectedSubmission(sub)}
+                    className="text-xs text-red-600 hover:underline font-semibold"
+                  >
+                    View details
+                  </button>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <input
@@ -1526,6 +1529,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user }) => {
           </div>
         )}
       </AnimatePresence>
+      {selectedSubmission && (
+        <SubmissionDetailModal submission={selectedSubmission} onClose={() => setSelectedSubmission(null)} />
+      )}
     </div>
   );
 };

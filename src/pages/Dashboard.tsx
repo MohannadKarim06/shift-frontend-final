@@ -20,6 +20,7 @@ import { cn } from '../lib/utils';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getLevelByPoints, getNextLevel } from '../constants/levels';
+import { SubmissionDetailModal } from '../components/SubmissionDetailModal';
 
 interface DashboardProps {
   user: User;
@@ -27,6 +28,7 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   const [recentSubmissions, setRecentSubmissions] = useState<Submission[]>([]);
+  const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
   const [featuredWorkflow, setFeaturedWorkflow] = useState<Workflow | null>(null);
   const [topContributors, setTopContributors] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -144,7 +146,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 </div>
                 <div className="space-y-3">
                   {recentSubmissions.length > 0 ? recentSubmissions.map((sub) => (
-                    <div key={sub.id} className="bg-white p-4 rounded-xl border border-zinc-100 flex items-center justify-between group hover:border-red-200 transition-all">
+                    <div
+                      key={sub.id}
+                      onClick={() => setSelectedSubmission(sub)}
+                      className="bg-white p-4 rounded-xl border border-zinc-100 flex items-center justify-between group hover:border-red-200 transition-all cursor-pointer"
+                    >
                       <div className="flex items-center gap-4">
                         <div className="w-10 h-10 bg-zinc-100 rounded-full flex items-center justify-center font-bold text-zinc-600">
                           {sub.userName[0]}
@@ -173,6 +179,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                             href={sub.link}
                             target="_blank"
                             rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
                             className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
                             title="Download"
                           >
@@ -281,6 +288,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
             </div>
           </div>
         </>
+      )}
+      {selectedSubmission && (
+        <SubmissionDetailModal submission={selectedSubmission} onClose={() => setSelectedSubmission(null)} />
       )}
     </div>
   );
