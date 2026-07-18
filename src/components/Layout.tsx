@@ -72,14 +72,12 @@ export const Layout: React.FC<LayoutProps> = ({ user }) => {
           isRTL ? "border-l" : "border-r"
         )}
       >
-        <div className={cn("flex items-center justify-between", isSidebarOpen ? "p-6" : "p-4")}>
-          <div className="flex items-center gap-3">
-            <img
-              src="/logo_main.png"
-              alt="Shift AI"
-              className={cn("object-contain shrink-0 transition-all", isSidebarOpen ? "w-20 h-20" : "w-10 h-10")}
-            />
-          </div>
+        <div className={cn("flex items-center", isSidebarOpen ? "p-6 justify-between" : "p-3 flex-col gap-2")}>
+          <img
+            src="/logo_main.png"
+            alt="Shift AI"
+            className={cn("object-contain shrink-0 transition-all", isSidebarOpen ? "w-28 h-28" : "w-12 h-12")}
+          />
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-1 hover:bg-zinc-100 rounded text-zinc-500">
             {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
