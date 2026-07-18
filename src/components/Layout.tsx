@@ -11,7 +11,6 @@ import {
   LogOut, 
   ChevronRight,
   Search,
-  Bell,
   Menu,
   X
 } from 'lucide-react';
@@ -75,8 +74,7 @@ export const Layout: React.FC<LayoutProps> = ({ user }) => {
       >
         <div className="p-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/logo_main.png" alt="Shift AI" className="w-8 h-8 object-contain shrink-0" />
-            <span className={cn("font-bold text-xl tracking-tight text-zinc-900", !isSidebarOpen && "hidden")}>SHIFT AI</span>
+            <img src="/logo_main.png" alt="Shift AI" className="w-12 h-12 object-contain shrink-0" />
           </div>
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-1 hover:bg-zinc-100 rounded text-zinc-500">
             {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
@@ -183,10 +181,6 @@ export const Layout: React.FC<LayoutProps> = ({ user }) => {
             />
           </div>
           <div className="flex items-center gap-4">
-            <button className="p-2 text-zinc-500 hover:bg-zinc-100 rounded-full relative">
-              <Bell size={20} />
-              <span className={cn("absolute top-1.5 w-2 h-2 bg-red-600 rounded-full border-2 border-white", isRTL ? "left-1.5" : "right-1.5")}></span>
-            </button>
             <div className="h-8 w-px bg-zinc-200"></div>
             <div className="flex items-center gap-2">
               <div className="text-right hidden sm:block">

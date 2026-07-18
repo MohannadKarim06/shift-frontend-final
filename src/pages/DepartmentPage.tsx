@@ -7,6 +7,7 @@ import {
   Users,
   Zap,
   ArrowRight,
+  Download,
   CheckCircle2,
   TrendingUp,
   Award,
@@ -178,9 +179,17 @@ export const DepartmentPage: React.FC<DepartmentPageProps> = ({ user }) => {
                           <p className="text-xs text-zinc-500 mt-0.5">{t('by')} {sub.userName} • {sub.workflowTitle}</p>
                         </div>
                       </div>
-                      <Link to={`/workflows/${sub.workflowId}`} className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all">
-                        <ArrowRight size={20} className={cn(isRTL && "rotate-180")} />
-                      </Link>
+                      {sub.link && (
+                        <a
+                          href={sub.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                          title="Download"
+                        >
+                          <Download size={20} />
+                        </a>
+                      )}
                     </div>
                   ))}
                   {submissions.length === 0 && (

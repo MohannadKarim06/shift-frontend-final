@@ -7,6 +7,7 @@ import {
   Zap,
   Plus,
   ArrowUpRight,
+  Download,
   Award,
   Clock,
   CheckCircle2,
@@ -167,9 +168,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                         <div className={cn("text-right", isRTL ? "ml-4" : "mr-4")}>
                           <p className="text-xs font-bold text-emerald-600">+{sub.pointsAwarded} pts</p>
                         </div>
-                        <Link to={`/workflows/${sub.workflowId}`} className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all">
-                          <ArrowUpRight size={20} className={cn(isRTL && "rotate-180")} />
-                        </Link>
+                        {sub.link && (
+                          <a
+                            href={sub.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                            title="Download"
+                          >
+                            <Download size={20} />
+                          </a>
+                        )}
                       </div>
                     </div>
                   )) : (

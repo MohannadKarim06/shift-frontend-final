@@ -667,8 +667,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user }) => {
                     {sub.userName} · {sub.workflowTitle} · {sub.outputType}
                   </p>
                   {sub.link && (
-                    <a href={sub.link} target="_blank" rel="noopener noreferrer" className="text-xs text-red-600 hover:underline">
-                      View output
+                    <a href={sub.link} target="_blank" rel="noopener noreferrer" className="text-xs text-red-600 hover:underline font-semibold">
+                      Download output
                     </a>
                   )}
                 </div>

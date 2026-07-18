@@ -11,6 +11,7 @@ import {
   Lock,
   Eye,
   ArrowUpRight,
+  Download,
   Loader2,
   Sparkles,
   Search,
@@ -507,9 +508,17 @@ export const MyScore: React.FC<MyScoreProps> = ({ user }) => {
                     <div className="text-right mr-4">
                       <p className="text-xs font-bold text-emerald-600">+{sub.pointsAwarded} {t('points')}</p>
                     </div>
-                    <Link to={`/workflows/${sub.workflowId}`} className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all">
-                      <ArrowUpRight size={20} className={cn(isRTL && "rotate-180")} />
-                    </Link>
+                    {sub.link && (
+                      <a
+                        href={sub.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                        title="Download"
+                      >
+                        <Download size={20} />
+                      </a>
+                    )}
                   </div>
                 </div>
               )) : (
